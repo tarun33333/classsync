@@ -26,6 +26,7 @@ const attendanceRoutes = require('./routes/attendanceRoutes');
 app.use('/api/auth', authRoutes);
 app.use('/api/sessions', sessionRoutes);
 app.use('/api/attendance', attendanceRoutes);
+app.use('/api/routines', require('./routes/routineRoutes'));
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

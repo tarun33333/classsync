@@ -1,18 +1,53 @@
 import React, { useContext } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { AuthProvider, AuthContext } from './context/AuthContext';
 import { ActivityIndicator, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 import LoginScreen from './screens/LoginScreen';
 import TeacherHomeScreen from './screens/TeacherHomeScreen';
 import TeacherSessionScreen from './screens/TeacherSessionScreen';
+import TeacherReportsScreen from './screens/TeacherReportsScreen';
 import StudentHomeScreen from './screens/StudentHomeScreen';
 import StudentAttendanceScreen from './screens/StudentAttendanceScreen';
 import StudentHistoryScreen from './screens/StudentHistoryScreen';
-import TeacherReportsScreen from './screens/TeacherReportsScreen';
 
 const Stack = createStackNavigator();
+const Tab = createBottomTabNavigator();
+
+const TeacherTabs = () => (
+  <Tab.Navigator screenOptions={({ route }) => ({
+    tabBarIcon: ({ focused, color, size }) => {
+      let iconName;
+      if (route.name === 'Home') iconName = focused ? 'home' : 'home-outline';
+      else if (route.name === 'Reports') iconName = focused ? 'bar-chart' : 'bar-chart-outline';
+      return <Ionicons name={iconName} size={size} color={color} />;
+    },
+    tabBarActiveTintColor: 'blue',
+    tabBarInactiveTintColor: 'gray',
+  })}>
+    <Tab.Screen name="Home" component={TeacherHomeScreen} />
+    <Tab.Screen name="Reports" component={TeacherReportsScreen} />
+  </Tab.Navigator>
+);
+
+const StudentTabs = () => (
+  <Tab.Navigator screenOptions={({ route }) => ({
+    tabBarIcon: ({ focused, color, size }) => {
+      let iconName;
+      if (route.name === 'Home') iconName = focused ? 'home' : 'home-outline';
+      else if (route.name === 'History') iconName = focused ? 'calendar' : 'calendar-outline';
+      return <Ionicons name={iconName} size={size} color={color} />;
+    },
+    tabBarActiveTintColor: 'blue',
+    tabBarInactiveTintColor: 'gray',
+  })}>
+    <Tab.Screen name="Home" component={StudentHomeScreen} />
+    <Tab.Screen name="History" component={StudentHistoryScreen} />
+  </Tab.Navigator>
+);
 
 const AppNav = () => {
   const { userToken, userRole, isLoading } = useContext(AuthContext);
@@ -27,20 +62,18 @@ const AppNav = () => {
 
   return (
     <NavigationContainer>
-      <Stack.Navigator>
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
         {userToken === null ? (
           <Stack.Screen name="Login" component={LoginScreen} />
         ) : userRole === 'teacher' ? (
           <>
-            <Stack.Screen name="TeacherHome" component={TeacherHomeScreen} />
-            <Stack.Screen name="TeacherSession" component={TeacherSessionScreen} />
-            <Stack.Screen name="TeacherReports" component={TeacherReportsScreen} />
+            <Stack.Screen name="TeacherMain" component={TeacherTabs} />
+            <Stack.Screen name="TeacherSession" component={TeacherSessionScreen} options={{ headerShown: true }} />
           </>
         ) : (
           <>
-            <Stack.Screen name="StudentHome" component={StudentHomeScreen} />
-            <Stack.Screen name="StudentAttendance" component={StudentAttendanceScreen} />
-            <Stack.Screen name="StudentHistory" component={StudentHistoryScreen} />
+            <Stack.Screen name="StudentMain" component={StudentTabs} />
+            <Stack.Screen name="StudentAttendance" component={StudentAttendanceScreen} options={{ headerShown: true }} />
           </>
         )}
       </Stack.Navigator>

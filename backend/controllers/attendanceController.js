@@ -112,7 +112,7 @@ const getStudentHistory = async (req, res) => {
 const getStudentDashboard = async (req, res) => {
     try {
         // Mocking today as "Monday" for demo purposes
-        const day = 'Monday';
+        const day = new Date().toLocaleDateString('en-US', { weekday: 'long' });
         const routines = await require('../models/ClassRoutine').find({ section: req.user.section, day });
 
         const dashboard = await Promise.all(routines.map(async (routine) => {
