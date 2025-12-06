@@ -15,6 +15,11 @@ const classHistorySchema = mongoose.Schema({
         type: String, // e.g., 'A', 'B'
         required: true
     },
+    semester: {
+        type: Number,
+        required: true,
+        default: 1
+    },
     otp: {
         type: String
     },

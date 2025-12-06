@@ -209,85 +209,152 @@ const getStudentHistory = async (req, res) => {
 // @access  Student
 const getStudentDashboard = async (req, res) => {
     try {
-        // Mocking today as "Monday" for demo purposes
-        const day = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+        // 1. Get current day in IST
+        const day = new Date().toLocaleDateString('en-US', { weekday: 'long', timeZone: 'Asia/Kolkata' });
 
-        // Fetch all routines for this section & day, populate teacher to check department
-        const allRoutines = await require('../models/ClassRoutine')
+        // 2. Fetch seeded routines for this section & day
+        const routines = await require('../models/ClassRoutine')
             .find({ section: req.user.section, day })
-            .populate('teacher', 'department')
+            .populate('teacher', 'department name') // Get teacher name too
             .sort({ startTime: 1 });
 
-        // FILTER: Check if Teacher's Dept matches Student's Dept
-        const routines = allRoutines.filter(r =>
+        // Filter by Dept (optional, but good for cleanliness)
+        const relevantRoutines = routines.filter(r =>
             r.teacher && r.teacher.department === req.user.department
         );
 
-        const dashboard = await Promise.all(routines.map(async (routine) => {
-            // Check for active session for this subject/section
-            const session = await Session.findOne({
-                subject: routine.subject,
-                section: routine.section,
-                isActive: true
-            });
+        // 3. Fetch ANY active sessions for this student's section (Real-time check)
+        const activeSessions = await Session.find({
+            section: req.user.section,
+            isActive: true
+        }).populate('teacher', 'name');
+
+        // 4. Build Dashboard Data
+        // Start with scheduled routines
+        let dashboardData = await Promise.all(relevantRoutines.map(async (routine) => {
+            // Check if this routine is currently active
+            const activeSession = activeSessions.find(s => s.subject === routine.subject);
 
             let status = 'upcoming';
             let sessionId = null;
+            let teacherName = routine.teacher.name;
 
-            if (session) {
+            if (activeSession) {
                 status = 'ongoing';
-                sessionId = session._id;
+                sessionId = activeSession._id;
+                teacherName = activeSession.teacher ? activeSession.teacher.name : teacherName;
 
-                // Check if already present
-                const attendance = await Attendance.findOne({ session: session._id, student: req.user._id });
-                if (attendance) {
-                    status = 'present';
-                }
+                // Check attendance
+                const attendance = await Attendance.findOne({ session: activeSession._id, student: req.user._id });
+                if (attendance) status = 'present';
             }
 
             return {
                 subject: routine.subject,
-                day: routine.day, // Add this for filtering
+                day: routine.day,
                 startTime: routine.startTime,
                 endTime: routine.endTime,
                 status,
-                sessionId
+                sessionId,
+                teacherName
             };
         }));
 
-        res.json(dashboard);
+        // 5. Inject Ad-hoc Active Sessions (Classes not in routine but running)
+        for (const session of activeSessions) {
+            const isAlreadyListed = dashboardData.some(d => d.subject === session.subject && d.status !== 'upcoming');
+
+            if (!isAlreadyListed) {
+                // Check if user already marked attendance for this ad-hoc session
+                let status = 'ongoing';
+                const attendance = await Attendance.findOne({ session: session._id, student: req.user._id });
+                if (attendance) status = 'present';
+
+                dashboardData.unshift({ // Add to top
+                    subject: session.subject,
+                    day: day,
+                    startTime: 'Live', // Special indicator
+                    endTime: 'Now',
+                    status,
+                    sessionId: session._id,
+                    teacherName: session.teacher ? session.teacher.name : 'Unknown'
+                });
+            }
+        }
+
+        res.json(dashboardData);
     } catch (error) {
+        console.error('Dashboard Error:', error);
         res.status(500).json({ message: error.message });
     }
 };
 
-// @desc    Get Student Stats (Percentage per Subject)
+// @desc    Get Student Stats (for Summary)
 // @route   GET /api/attendance/stats
 // @access  Student
 const getStudentStats = async (req, res) => {
     try {
-        const stats = await Attendance.aggregate([
+        const ClassHistory = require('../models/ClassHistory'); // Ensure model is loaded
+        const currentSem = req.user.currentSemester || 1;
+        const selectedSem = parseInt(req.query.semester) || currentSem;
+
+        // 1. Calculate Overall History (Graph Data)
+        // We need to join Attendance -> ClassHistory to get the semester of each attended class
+        const graphAgg = await Attendance.aggregate([
+            { $match: { student: req.user._id } },
+            {
+                $lookup: {
+                    from: 'classhistories', // Collection name for ClassHistory
+                    localField: 'session',
+                    foreignField: '_id',
+                    as: 'classDetails'
+                }
+            },
+            { $unwind: '$classDetails' },
+            {
+                $group: {
+                    _id: '$classDetails.semester',
+                    present: {
+                        $sum: { $cond: [{ $eq: ['$status', 'present'] }, 1, 0] }
+                    },
+                    total: { $sum: 1 }
+                }
+            },
+            { $sort: { _id: 1 } }
+        ]);
+
+        const graphData = graphAgg.map(g => ({
+            semester: g._id,
+            percentage: Math.round((g.present / g.total) * 100)
+        }));
+
+        // 2. Detailed Stats for Selected Semester (Pie Chart)
+        const statsAgg = await Attendance.aggregate([
             { $match: { student: req.user._id, status: 'present' } },
             {
                 $lookup: {
-                    from: 'sessions',
+                    from: 'classhistories',
                     localField: 'session',
                     foreignField: '_id',
-                    as: 'sessionData'
+                    as: 'classDetails'
                 }
             },
-            { $unwind: '$sessionData' },
+            { $unwind: '$classDetails' },
+            { $match: { 'classDetails.semester': selectedSem } },
             {
                 $group: {
-                    _id: '$sessionData.subject',
+                    _id: '$classDetails.subject',
                     presentCount: { $sum: 1 }
                 }
             }
         ]);
 
-        // Note: To get accurate percentage, we need total sessions per subject.
-        // For now, we return present count.
-        res.json(stats);
+        res.json({
+            stats: statsAgg,
+            graphData,
+            currentSemester: currentSem,
+            selectedSemester: selectedSem
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

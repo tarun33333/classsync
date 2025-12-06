@@ -65,7 +65,8 @@ const seedData = async () => {
                     role: 'student',
                     rollNumber: `${dept}10${i}`,
                     department: dept,
-                    section: 'A' // All in Section A for simplicity
+                    section: 'A', // All in Section A for simplicity
+                    currentSemester: 3
                 });
                 studentsByDept[dept].push(student);
             }
@@ -75,124 +76,123 @@ const seedData = async () => {
         console.log('Creating Class Routines...');
         const routines = [];
 
+        const deptSubjects = {
+            'CSE': ['Data Structures', 'Algorithms', 'Database Systems', 'Operating Systems', 'Computer Networks', 'Software Engineering'],
+            'ECE': ['Circuit Theory', 'Digital Logic', 'Signals & Systems', 'Microprocessors', 'Analog Electronics', 'Control Systems'],
+            'MECH': ['Thermodynamics', 'Fluid Mechanics', 'Strength of Materials', 'Machine Design', 'Manufacturing Tech', 'Heat Transfer']
+        };
+
         for (const dept of departments) {
             const deptTeachers = teachersByDept[dept];
+            const subjects = deptSubjects[dept];
 
             for (const day of days) {
-                // Distribute classes among teachers
-                // Constraint: Max 3 classes per teacher per day
-                // Strategy: We have 6 slots. 
-                // Teacher 1 takes slots 0, 2, 4
-                // Teacher 2 takes slots 1, 3, 5
+                // strict ordered slots 0 to 5
+                for (let slot = 0; slot < 6; slot++) {
+                    // Alternate teachers: Slots 0,2,4 -> Teacher 1; Slots 1,3,5 -> Teacher 2
+                    const teacherIndex = slot % 2;
+                    const teacher = deptTeachers[teacherIndex];
 
-                // Teacher 1
-                [0, 2, 4].forEach(slotIndex => {
                     routines.push({
-                        teacher: deptTeachers[0]._id,
-                        subject: `${dept} Core Subject ${slotIndex + 1}`,
+                        teacher: teacher._id,
+                        subject: subjects[slot], // Assign specific subject to slot
                         section: 'A',
                         day: day,
-                        startTime: timeSlots[slotIndex].start,
-                        endTime: timeSlots[slotIndex].end
+                        startTime: timeSlots[slot].start,
+                        endTime: timeSlots[slot].end
                     });
-                });
-
-                // Teacher 2
-                [1, 3, 5].forEach(slotIndex => {
-                    routines.push({
-                        teacher: deptTeachers[1]._id,
-                        subject: `${dept} Elective Subject ${slotIndex + 1}`,
-                        section: 'A',
-                        day: day,
-                        startTime: timeSlots[slotIndex].start,
-                        endTime: timeSlots[slotIndex].end
-                    });
-                });
+                }
             }
         }
 
-        // Ensure "Today" has classes for testing, if not already covered by weekday logic
-        // (The logic above covers all days, so today is covered)
-
         await ClassRoutine.insertMany(routines);
 
-
         // --- Create History (Past Sessions & Attendance) ---
-        console.log('Generating History...');
+        console.log('Generating History for Semesters 1, 2, 3...');
 
-        // Let's create history for the last 3 days
-        const today = new Date();
+        const semesters = [
+            { sem: 1, offsetMonths: 12 },
+            { sem: 2, offsetMonths: 6 },
+            { sem: 3, offsetMonths: 0 } // Current
+        ];
 
-        for (let i = 1; i <= 3; i++) {
-            const pastDate = new Date(today);
-            pastDate.setDate(today.getDate() - i);
-            const dayName = pastDate.toLocaleDateString('en-US', { weekday: 'long' });
+        for (const semesterData of semesters) {
+            const { sem, offsetMonths } = semesterData;
 
-            // Find routines for this day name
-            // We'll mimic that these sessions actually happened
+            // Generate 5 days of history per semester for demo
+            for (let i = 0; i < 5; i++) {
+                const today = new Date();
+                today.setMonth(today.getMonth() - offsetMonths);
+                today.setDate(today.getDate() - i); // Go back i days
+                const dayName = today.toLocaleDateString('en-US', { weekday: 'long' });
 
-            // Pick just CSE routines for history generation to save time/space
-            const relevantRoutines = routines.filter(r => r.day === dayName && teachersByDept['CSE'].some(t => t._id.equals(r.teacher)));
+                // Pick just CSE routines matching the day
+                const relevantRoutines = routines.filter(r =>
+                    r.day === dayName &&
+                    teachersByDept['CSE'].some(t => t._id.equals(r.teacher))
+                );
 
-            for (const routine of relevantRoutines) {
-                const sessionId = new mongoose.Types.ObjectId();
-                const cseStudents = studentsByDept['CSE'];
+                if (relevantRoutines.length === 0) continue;
 
-                // Determine attendance beforehand to set counts
-                const attendanceData = [];
-                let presentCount = 0;
-                let absentCount = 0;
+                for (const routine of relevantRoutines) {
+                    const sessionId = new mongoose.Types.ObjectId();
+                    const cseStudents = studentsByDept['CSE'];
 
-                for (const student of cseStudents) {
-                    const isPresent = Math.random() > 0.2; // 80% attendance
-                    if (isPresent) {
-                        presentCount++;
-                        attendanceData.push({
-                            session: sessionId,
-                            student: student._id,
-                            status: 'present',
-                            method: isPresent ? 'qr' : 'manual',
-                            createdAt: pastDate
-                        });
-                    } else {
-                        absentCount++;
-                        attendanceData.push({
-                            session: sessionId,
-                            student: student._id,
-                            status: 'absent',
-                            method: 'manual',
-                            verified: true,
-                            createdAt: pastDate
-                        });
+                    const attendanceData = [];
+                    let presentCount = 0;
+                    let absentCount = 0;
+
+                    for (const student of cseStudents) {
+                        const chance = sem === 1 ? 0.9 : sem === 2 ? 0.7 : 0.85;
+                        const isPresent = Math.random() < chance;
+
+                        if (isPresent) {
+                            presentCount++;
+                            attendanceData.push({
+                                session: sessionId,
+                                student: student._id,
+                                status: 'present',
+                                method: 'qr',
+                                createdAt: today
+                            });
+                        } else {
+                            absentCount++;
+                            attendanceData.push({
+                                session: sessionId,
+                                student: student._id,
+                                status: 'absent',
+                                method: 'manual',
+                                verified: true,
+                                createdAt: today
+                            });
+                        }
                     }
-                }
 
-                // Create ClassHistory Record
-                await ClassHistory.create({
-                    _id: sessionId,
-                    teacher: routine.teacher,
-                    subject: routine.subject,
-                    section: routine.section,
-                    bssid: 'HISTORY_BSSID',
-                    ssid: 'HISTORY_WIFI',
-                    otp: '0000',
-                    qrCode: 'history_qr',
-                    startTime: pastDate,
-                    endTime: pastDate,
-                    presentCount,
-                    absentCount
-                });
+                    await ClassHistory.create({
+                        _id: sessionId,
+                        teacher: routine.teacher,
+                        subject: routine.subject,
+                        section: routine.section,
+                        semester: sem,
+                        bssid: 'HISTORY_BSSID',
+                        ssid: 'HISTORY_WIFI',
+                        otp: '0000',
+                        qrCode: 'history_qr',
+                        startTime: today,
+                        endTime: today,
+                        presentCount,
+                        absentCount
+                    });
 
-                // Create Attendance Records
-                if (attendanceData.length > 0) {
-                    await Attendance.insertMany(attendanceData);
+                    if (attendanceData.length > 0) {
+                        await Attendance.insertMany(attendanceData);
+                    }
                 }
             }
         }
 
         console.log('Seeding Complete!');
         console.log('Credentials:');
-        console.log('  Teacher (CSE): teacher1.cse@test.com / 111');
         console.log('  Teacher (ECE): teacher1.ece@test.com / 111');
         console.log('  Student (CSE): student1.cse@test.com / 111');
 

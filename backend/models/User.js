@@ -12,6 +12,7 @@ const userSchema = new mongoose.Schema({
     macAddress: { type: String }, // Bound MAC address
     department: { type: String },
     section: { type: String },
+    currentSemester: { type: Number, default: 1 },
 
     // Teacher specific
     // (could add specific fields if needed)
