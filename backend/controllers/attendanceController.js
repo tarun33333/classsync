@@ -213,4 +213,43 @@ const getTeacherReports = async (req, res) => {
     }
 };
 
-module.exports = { verifyWifi, markAttendance, getSessionAttendance, getStudentHistory, getStudentDashboard, getStudentStats, getTeacherReports };
+// @desc    Get Reports filtered by Date
+// @route   GET /api/attendance/reports/filter
+// @access  Teacher
+const getFilteredReports = async (req, res) => {
+    const { date } = req.query;
+    try {
+        // Create date range for the selected day
+        const start = new Date(date);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(date);
+        end.setHours(23, 59, 59, 999);
+
+        // Find sessions for this teacher on this day (active or inactive)
+        const sessions = await Session.find({
+            teacher: req.user._id,
+            createdAt: { $gte: start, $lte: end }
+        }).sort({ createdAt: 1 });
+
+        const reports = await Promise.all(sessions.map(async (session) => {
+            const presentCount = await Attendance.countDocuments({ session: session._id, status: 'present' });
+            const absentCount = await Attendance.countDocuments({ session: session._id, status: 'absent' });
+
+            return {
+                sessionId: session._id,
+                subject: session.subject,
+                section: session.section,
+                date: session.createdAt,
+                isActive: session.isActive,
+                presentCount,
+                absentCount
+            };
+        }));
+
+        res.json(reports);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+module.exports = { verifyWifi, markAttendance, getSessionAttendance, getStudentHistory, getStudentDashboard, getStudentStats, getTeacherReports, getFilteredReports };
