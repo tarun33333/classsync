@@ -50,13 +50,35 @@ export const AuthProvider = ({ children }) => {
             let userInfo = await SecureStore.getItemAsync('userInfo');
 
             if (userToken) {
-                setUserToken(userToken);
-                setUserRole(userRole);
-                setUserInfo(JSON.parse(userInfo));
+                try {
+                    // VERIFY TOKEN WITH BACKEND
+                    // We need to manually set header here because 'client' interceptor 
+                    // might not have picked up the token from store yet if we just set it.
+                    // Actually interceptor reads from Store, so it should be fine? 
+                    // Let's be safe and set it or rely on interceptor.
+                    // Interceptor reads 'userToken' from SecureStore.
+
+                    const res = await client.get('/auth/verify');
+
+                    // Token is valid, update state with fresh user data
+                    setUserToken(userToken);
+                    setUserRole(res.data.role);
+                    setUserInfo(res.data);
+
+                    // Update stored info
+                    await SecureStore.setItemAsync('userInfo', JSON.stringify(res.data));
+                    await SecureStore.setItemAsync('userRole', res.data.role);
+
+                } catch (apiError) {
+                    console.log('Token verification failed:', apiError);
+                    // Token invalid or user deleted -> Logout
+                    await logout();
+                }
             }
             setIsLoading(false);
         } catch (e) {
             console.log(`isLoggedIn error ${e}`);
+            setIsLoading(false);
         }
     };
 

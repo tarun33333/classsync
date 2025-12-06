@@ -5,7 +5,7 @@ import client from '../api/client';
 import { useFocusEffect } from '@react-navigation/native';
 
 const StudentHomeScreen = ({ navigation }) => {
-    const { userInfo, logout } = useContext(AuthContext);
+    const { userInfo } = useContext(AuthContext);
     const [periods, setPeriods] = useState([]);
     const [refreshing, setRefreshing] = useState(false);
 
@@ -65,9 +65,7 @@ const StudentHomeScreen = ({ navigation }) => {
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
             />
 
-            <View style={styles.logout}>
-                <Button title="Logout" onPress={logout} color="red" />
-            </View>
+
         </View>
     );
 };

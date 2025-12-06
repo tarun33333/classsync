@@ -5,7 +5,7 @@ import client from '../api/client';
 import * as Network from 'expo-network';
 
 const TeacherHomeScreen = ({ navigation }) => {
-    const { userInfo, logout } = useContext(AuthContext);
+    const { userInfo } = useContext(AuthContext);
     const [routines, setRoutines] = useState([]);
     const [activeSession, setActiveSession] = useState(null);
 
@@ -79,9 +79,7 @@ const TeacherHomeScreen = ({ navigation }) => {
                 ListEmptyComponent={<Text style={styles.noData}>No classes assigned.</Text>}
             />
 
-            <View style={styles.logout}>
-                <Button title="Logout" onPress={logout} color="red" />
-            </View>
+
         </View>
     );
 };

@@ -2,6 +2,8 @@ require('dotenv').config();
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const ClassRoutine = require('../models/ClassRoutine');
+const Session = require('../models/Session');
+const Attendance = require('../models/Attendance');
 
 mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/classsync')
     .then(() => console.log('MongoDB Connected for Seeding'))
@@ -9,107 +11,169 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/classsync')
 
 const seedData = async () => {
     try {
+        // Clear all data
         await User.deleteMany({});
         await ClassRoutine.deleteMany({});
+        await Session.deleteMany({});
+        await Attendance.deleteMany({});
 
         console.log('Cleared existing data...');
 
-        // --- Create Teachers ---
-        const teacher1 = await User.create({
-            name: 'John Doe',
-            email: 'teacher@test.com',
-            password: '111',
-            role: 'teacher',
-            department: 'CS'
-        });
+        const departments = ['CSE', 'ECE', 'MECH'];
+        const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-        const teacher2 = await User.create({
-            name: 'Jane Smith',
-            email: 'teacher2@test.com',
-            password: '111',
-            role: 'teacher',
-            department: 'CS'
-        });
+        // Time slots (6 slots)
+        const timeSlots = [
+            { start: '09:00', end: '10:00' },
+            { start: '10:00', end: '11:00' },
+            { start: '11:00', end: '12:00' },
+            { start: '13:00', end: '14:00' },
+            { start: '14:00', end: '15:00' },
+            { start: '15:00', end: '16:00' }
+        ];
 
-        console.log('Teachers created: teacher@test.com, teacher2@test.com');
+        // --- Create Users ---
+        console.log('Creating Users...');
 
-        // --- Create 5 Students ---
-        const students = [];
-        const names = ['Alice', 'Bob', 'Charlie', 'David', 'Eve'];
-        for (let i = 0; i < 5; i++) {
-            const student = await User.create({
-                name: `${names[i]} Student`,
-                email: `student${i + 1}@test.com`,
-                password: '111',
-                role: 'student',
-                rollNumber: `CS10${i + 1}`,
-                department: 'CS',
-                section: 'A'
-            });
-            students.push(student);
+        const teachersByDept = {};
+        const studentsByDept = {};
+
+        for (const dept of departments) {
+            teachersByDept[dept] = [];
+            studentsByDept[dept] = [];
+
+            // Create 2 Teachers per Dept
+            for (let i = 1; i <= 2; i++) {
+                const teacher = await User.create({
+                    name: `Teacher ${dept} ${i}`,
+                    email: `teacher${i}.${dept.toLowerCase()}@test.com`,
+                    password: '111',
+                    role: 'teacher',
+                    department: dept
+                });
+                teachersByDept[dept].push(teacher);
+            }
+
+            // Create 2 Students per Dept
+            for (let i = 1; i <= 2; i++) {
+                const student = await User.create({
+                    name: `Student ${dept} ${i}`,
+                    email: `student${i}.${dept.toLowerCase()}@test.com`,
+                    password: '111',
+                    role: 'student',
+                    rollNumber: `${dept}10${i}`,
+                    department: dept,
+                    section: 'A' // All in Section A for simplicity
+                });
+                studentsByDept[dept].push(student);
+            }
         }
-        console.log('Students created: student1@test.com to student5@test.com');
 
         // --- Create Routines ---
-        // We want to ensure there are classes for "Today" so the user sees them immediately.
-        const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
-        const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-
-        // Ensure 'today' is in the list, even if it's weekend (just for demo)
-        if (!days.includes(today)) days.push(today);
-
-        const subjects = ['Data Structures', 'Algorithms', 'Database Systems', 'Operating Systems', 'Computer Networks'];
-
+        console.log('Creating Class Routines...');
         const routines = [];
 
-        // 1. Routine for Teacher 1 (John Doe) - Data Structures & Algo
-        routines.push({
-            teacher: teacher1._id,
-            subject: 'Data Structures',
-            section: 'A',
-            day: today, // Class for TODAY
-            startTime: '09:00',
-            endTime: '10:00'
-        });
-        routines.push({
-            teacher: teacher1._id,
-            subject: 'Algorithms',
-            section: 'A',
-            day: today, // Another class for TODAY
-            startTime: '11:00',
-            endTime: '12:00'
-        });
-        routines.push({
-            teacher: teacher1._id,
-            subject: 'Data Structures',
-            section: 'A',
-            day: 'Monday',
-            startTime: '10:00',
-            endTime: '11:00'
-        });
+        for (const dept of departments) {
+            const deptTeachers = teachersByDept[dept];
 
-        // 2. Routine for Teacher 2 (Jane Smith) - DB & OS
-        routines.push({
-            teacher: teacher2._id,
-            subject: 'Database Systems',
-            section: 'A',
-            day: today,
-            startTime: '14:00',
-            endTime: '15:00'
-        });
-        routines.push({
-            teacher: teacher2._id,
-            subject: 'Operating Systems',
-            section: 'A',
-            day: 'Wednesday',
-            startTime: '10:00',
-            endTime: '11:00'
-        });
+            for (const day of days) {
+                // Distribute classes among teachers
+                // Constraint: Max 3 classes per teacher per day
+                // Strategy: We have 6 slots. 
+                // Teacher 1 takes slots 0, 2, 4
+                // Teacher 2 takes slots 1, 3, 5
+
+                // Teacher 1
+                [0, 2, 4].forEach(slotIndex => {
+                    routines.push({
+                        teacher: deptTeachers[0]._id,
+                        subject: `${dept} Core Subject ${slotIndex + 1}`,
+                        section: 'A',
+                        day: day,
+                        startTime: timeSlots[slotIndex].start,
+                        endTime: timeSlots[slotIndex].end
+                    });
+                });
+
+                // Teacher 2
+                [1, 3, 5].forEach(slotIndex => {
+                    routines.push({
+                        teacher: deptTeachers[1]._id,
+                        subject: `${dept} Elective Subject ${slotIndex + 1}`,
+                        section: 'A',
+                        day: day,
+                        startTime: timeSlots[slotIndex].start,
+                        endTime: timeSlots[slotIndex].end
+                    });
+                });
+            }
+        }
+
+        // Ensure "Today" has classes for testing, if not already covered by weekday logic
+        // (The logic above covers all days, so today is covered)
 
         await ClassRoutine.insertMany(routines);
-        console.log(`Routines created. Added classes for ${today} so you can test immediately.`);
+
+
+        // --- Create History (Past Sessions & Attendance) ---
+        console.log('Generating History...');
+
+        // Let's create history for the last 3 days
+        const today = new Date();
+
+        for (let i = 1; i <= 3; i++) {
+            const pastDate = new Date(today);
+            pastDate.setDate(today.getDate() - i);
+            const dayName = pastDate.toLocaleDateString('en-US', { weekday: 'long' });
+
+            // Find routines for this day name
+            // We'll mimic that these sessions actually happened
+
+            // Pick just CSE routines for history generation to save time/space
+            const relevantRoutines = routines.filter(r => r.day === dayName && teachersByDept['CSE'].some(t => t._id.equals(r.teacher)));
+
+            for (const routine of relevantRoutines) {
+                // Create a completed session
+                const session = await Session.create({
+                    teacher: routine.teacher,
+                    subject: routine.subject,
+                    section: routine.section,
+                    bssid: 'HISTORY_BSSID',
+                    ssid: 'HISTORY_WIFI',
+                    otp: '0000',
+                    qrCode: 'history_qr',
+                    isActive: false, // Ended
+                    routineId: null, // Optional for history
+                    createdAt: pastDate, // Backdate
+                    endTime: pastDate // Backdate
+                });
+
+                // Mark attendance for CSE students
+                const cseStudents = studentsByDept['CSE'];
+
+                // Randomly mark present or absent
+                for (const student of cseStudents) {
+                    const isPresent = Math.random() > 0.2; // 80% attendance
+
+                    await Attendance.create({
+                        session: session._id,
+                        student: student._id,
+                        status: isPresent ? 'present' : 'absent',
+                        method: isPresent ? 'qr' : 'manual',
+                        createdAt: pastDate // Backdate
+                    });
+                }
+            }
+        }
+
+        console.log('Seeding Complete!');
+        console.log('Credentials:');
+        console.log('  Teacher (CSE): teacher1.cse@test.com / 111');
+        console.log('  Teacher (ECE): teacher1.ece@test.com / 111');
+        console.log('  Student (CSE): student1.cse@test.com / 111');
 
         process.exit();
+
     } catch (error) {
         console.error(error);
         process.exit(1);

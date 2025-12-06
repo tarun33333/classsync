@@ -8,6 +8,38 @@ const startSession = async (req, res) => {
     const { subject, section, bssid, ssid } = req.body;
 
     try {
+        // Strict Schedule Validation
+        const now = new Date();
+        const currentDay = now.toLocaleDateString('en-US', { weekday: 'long' });
+
+        // Format current time to HH:MM for comparison
+        const currentHour = now.getHours();
+        const currentMinute = now.getMinutes();
+        const currentTime = `${currentHour.toString().padStart(2, '0')}:${currentMinute.toString().padStart(2, '0')}`;
+
+        const ClassRoutine = require('../models/ClassRoutine');
+
+        // Find if there is a routine for this teacher, subject, section, day
+        // And current time is within startTime and endTime
+        const routine = await ClassRoutine.findOne({
+            teacher: req.user._id,
+            subject,
+            section,
+            day: currentDay
+        });
+
+        if (!routine) {
+            return res.status(400).json({ message: `No class schedule found for ${subject} on ${currentDay}` });
+        }
+
+        // Check time bounds
+        // Simple string comparison works for 24h format "09:00" < "09:30"
+        if (currentTime < routine.startTime || currentTime > routine.endTime) {
+            return res.status(400).json({
+                message: `Class can only be started between ${routine.startTime} and ${routine.endTime}. Current time: ${currentTime}`
+            });
+        }
+
         // End any active sessions for this teacher
         await Session.updateMany(
             { teacher: req.user._id, isActive: true },
@@ -25,7 +57,8 @@ const startSession = async (req, res) => {
             ssid,
             otp,
             qrCode,
-            isActive: true
+            isActive: true,
+            routineId: routine._id // Link to routine
         });
 
         res.status(201).json(session);

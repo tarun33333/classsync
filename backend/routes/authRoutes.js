@@ -4,5 +4,7 @@ const { register, login } = require('../controllers/authController');
 
 router.post('/register', register);
 router.post('/login', login);
+const { protect } = require('../middlewares/authMiddleware');
+router.get('/verify', protect, require('../controllers/authController').verify);
 
 module.exports = router;

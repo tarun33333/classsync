@@ -84,4 +84,25 @@ const login = async (req, res) => {
     }
 };
 
-module.exports = { register, login };
+// @desc    Verify token and return user data
+// @route   GET /api/auth/verify
+// @access  Private
+const verify = async (req, res) => {
+    // If middleware passed, user is in req.user
+    const user = await User.findById(req.user._id).select('-password');
+    if (user) {
+        res.json({
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            department: user.department,
+            rollNumber: user.rollNumber,
+            macAddress: user.macAddress
+        });
+    } else {
+        res.status(404).json({ message: 'User not found' });
+    }
+};
+
+module.exports = { register, login, verify };
