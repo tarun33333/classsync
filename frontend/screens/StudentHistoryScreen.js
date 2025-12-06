@@ -1,20 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
 import { Calendar } from 'react-native-calendars';
-import { PieChart } from 'react-native-chart-kit';
 import client from '../api/client';
-
-const screenWidth = Dimensions.get('window').width;
 
 const StudentHistoryScreen = () => {
     const [history, setHistory] = useState([]);
-    const [stats, setStats] = useState([]);
     const [markedDates, setMarkedDates] = useState({});
+    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+    const [dailyHistory, setDailyHistory] = useState([]);
 
     useEffect(() => {
         fetchHistory();
-        fetchStats();
     }, []);
+
+    useEffect(() => {
+        if (history.length > 0) {
+            filterHistoryByDate(selectedDate);
+        }
+    }, [selectedDate, history]);
 
     const fetchHistory = async () => {
         try {
@@ -25,8 +28,8 @@ const StudentHistoryScreen = () => {
             res.data.forEach(item => {
                 const date = item.createdAt.split('T')[0];
                 marks[date] = {
-                    selected: true,
-                    selectedColor: item.status === 'present' ? 'green' : 'red'
+                    marked: true,
+                    dotColor: item.status === 'present' ? 'green' : 'red'
                 };
             });
             setMarkedDates(marks);
@@ -35,84 +38,81 @@ const StudentHistoryScreen = () => {
         }
     };
 
-    const fetchStats = async () => {
-        try {
-            const res = await client.get('/attendance/stats');
-            // Transform for PieChart
-            const chartData = res.data.map((item, index) => ({
-                name: item._id,
-                population: item.presentCount,
-                color: getRandomColor(index),
-                legendFontColor: '#7F7F7F',
-                legendFontSize: 15
-            }));
-            setStats(chartData);
-        } catch (error) {
-            console.log(error);
-        }
+    const filterHistoryByDate = (date) => {
+        const filtered = history.filter(item => item.createdAt.split('T')[0] === date);
+        setDailyHistory(filtered);
     };
 
-    const getRandomColor = (index) => {
-        const colors = ['#f00', '#0f0', '#00f', '#ff0', '#0ff', '#f0f'];
-        return colors[index % colors.length];
+    const onDayPress = (day) => {
+        setSelectedDate(day.dateString);
     };
+
+    const renderItem = ({ item }) => (
+        <View style={styles.card}>
+            <View>
+                <Text style={styles.subject}>{item.session?.subject || 'Archived Class'}</Text>
+                <Text style={styles.time}>{new Date(item.session?.startTime || item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+                <Text style={[styles.status, item.status === 'present' ? styles.present : styles.absent]}>
+                    {item.status.toUpperCase()}
+                </Text>
+                <Text style={styles.method}>{item.method ? `via ${item.method.toUpperCase()}` : 'Manual'}</Text>
+            </View>
+        </View>
+    );
 
     return (
-        <ScrollView style={styles.container}>
-            <Text style={styles.title}>Attendance History</Text>
+        <View style={styles.container}>
+            <Text style={styles.title}>History Calendar</Text>
 
             <Calendar
-                markedDates={markedDates}
+                onDayPress={onDayPress}
+                markedDates={{
+                    ...markedDates,
+                    [selectedDate]: { selected: true, selectedColor: 'blue' }
+                }}
                 theme={{
-                    selectedDayBackgroundColor: 'green',
                     todayTextColor: 'blue',
+                    arrowColor: 'blue',
                 }}
             />
 
-            <Text style={styles.subtitle}>Subject-wise Attendance</Text>
-            {stats.length > 0 ? (
-                <PieChart
-                    data={stats}
-                    width={screenWidth}
-                    height={220}
-                    chartConfig={{
-                        backgroundColor: '#1cc910',
-                        backgroundGradientFrom: '#eff3ff',
-                        backgroundGradientTo: '#efefef',
-                        color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-                    }}
-                    accessor="population"
-                    backgroundColor="transparent"
-                    paddingLeft="15"
-                    absolute
-                />
-            ) : (
-                <Text style={styles.noData}>No stats available yet.</Text>
-            )}
+            <Text style={styles.subtitle}>Records for {selectedDate}</Text>
 
-            <Text style={styles.subtitle}>Recent Logs</Text>
-            {history.slice(0, 5).map((item, index) => (
-                <View key={index} style={styles.logItem}>
-                    <Text style={styles.logSubject}>{item.session?.subject || 'Archived Class'}</Text>
-                    <Text style={item.status === 'present' ? styles.present : styles.absent}>
-                        {item.status.toUpperCase()}
-                    </Text>
-                    <Text>{new Date(item.createdAt).toLocaleDateString()}</Text>
-                </View>
-            ))}
-        </ScrollView>
+            <FlatList
+                data={dailyHistory}
+                keyExtractor={(item) => item._id}
+                renderItem={renderItem}
+                ListEmptyComponent={<Text style={styles.noData}>No classes recorded for this date.</Text>}
+                contentContainerStyle={{ paddingBottom: 20 }}
+            />
+        </View>
     );
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, padding: 10 },
-    title: { fontSize: 24, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
-    subtitle: { fontSize: 20, fontWeight: 'bold', marginTop: 20, marginBottom: 10 },
-    noData: { textAlign: 'center', marginVertical: 20, color: '#888' },
-    logItem: { flexDirection: 'row', justifyContent: 'space-between', padding: 15, borderBottomWidth: 1, borderBottomColor: '#eee' },
-    logSubject: { fontWeight: 'bold' },
-    present: { color: 'green', fontWeight: 'bold' },
-    absent: { color: 'red', fontWeight: 'bold' }
+    container: { flex: 1, padding: 15, backgroundColor: '#fff' },
+    title: { fontSize: 22, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' },
+    subtitle: { fontSize: 18, fontWeight: 'bold', marginTop: 20, marginBottom: 10, marginLeft: 5 },
+    card: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: 15,
+        backgroundColor: '#f9f9f9',
+        marginBottom: 10,
+        borderRadius: 8,
+        borderLeftWidth: 5,
+        borderLeftColor: '#ccc' // Default border
+    },
+    subject: { fontSize: 16, fontWeight: 'bold', color: '#333' },
+    time: { color: '#666', marginTop: 4 },
+    status: { fontWeight: 'bold', fontSize: 14 },
+    present: { color: 'green' },
+    absent: { color: 'red' },
+    method: { fontSize: 12, color: '#888', marginTop: 2 },
+    noData: { textAlign: 'center', marginTop: 20, color: '#aaa', fontStyle: 'italic' }
 });
 
 export default StudentHistoryScreen;

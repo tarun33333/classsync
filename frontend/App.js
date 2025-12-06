@@ -13,6 +13,7 @@ import TeacherReportsScreen from './screens/TeacherReportsScreen';
 import StudentHomeScreen from './screens/StudentHomeScreen';
 import StudentAttendanceScreen from './screens/StudentAttendanceScreen';
 import StudentHistoryScreen from './screens/StudentHistoryScreen';
+import StudentSummaryScreen from './screens/StudentSummaryScreen';
 import ProfileScreen from './screens/ProfileScreen';
 
 const Stack = createStackNavigator();
@@ -42,6 +43,7 @@ const StudentTabs = () => (
       let iconName;
       if (route.name === 'Home') iconName = focused ? 'home' : 'home-outline';
       else if (route.name === 'History') iconName = focused ? 'calendar' : 'calendar-outline';
+      else if (route.name === 'Summary') iconName = focused ? 'pie-chart' : 'pie-chart-outline';
       else if (route.name === 'Profile') iconName = focused ? 'person' : 'person-outline';
       return <Ionicons name={iconName} size={size} color={color} />;
     },
@@ -50,6 +52,7 @@ const StudentTabs = () => (
   })}>
     <Tab.Screen name="Home" component={StudentHomeScreen} />
     <Tab.Screen name="History" component={StudentHistoryScreen} />
+    <Tab.Screen name="Summary" component={StudentSummaryScreen} />
     <Tab.Screen name="Profile" component={ProfileScreen} />
   </Tab.Navigator>
 );
