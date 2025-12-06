@@ -93,7 +93,7 @@ const StudentHistoryScreen = () => {
             <Text style={styles.subtitle}>Recent Logs</Text>
             {history.slice(0, 5).map((item, index) => (
                 <View key={index} style={styles.logItem}>
-                    <Text style={styles.logSubject}>{item.session.subject}</Text>
+                    <Text style={styles.logSubject}>{item.session?.subject || 'Archived Class'}</Text>
                     <Text style={item.status === 'present' ? styles.present : styles.absent}>
                         {item.status.toUpperCase()}
                     </Text>

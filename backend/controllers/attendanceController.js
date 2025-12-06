@@ -163,12 +163,43 @@ const getSessionAttendance = async (req, res) => {
 // @desc    Get Student History
 // @route   GET /api/attendance/student
 // @access  Student
+// @desc    Get Student History (Active + Archived)
+// @route   GET /api/attendance/student
+// @access  Student
 const getStudentHistory = async (req, res) => {
     try {
-        const history = await Attendance.find({ student: req.user._id })
-            .populate('session', 'subject startTime endTime')
-            .sort({ createdAt: -1 });
-        res.json(history);
+        const Session = require('../models/Session');
+        const ClassHistory = require('../models/ClassHistory');
+
+        // 1. Fetch Attendance Records (without populate first)
+        const attendance = await Attendance.find({ student: req.user._id })
+            .sort({ createdAt: -1 })
+            .lean();
+
+        // 2. Collect Session IDs
+        const sessionIds = attendance.map(a => a.session);
+
+        // 3. Fetch from Active Sessions
+        const activeSessions = await Session.find({ _id: { $in: sessionIds } }).select('subject startTime endTime');
+
+        // 4. Fetch from Class History
+        const archivedSessions = await ClassHistory.find({ _id: { $in: sessionIds } }).select('subject startTime endTime');
+
+        // 5. Create Lookup Map
+        const sessionMap = {};
+        activeSessions.forEach(s => sessionMap[s._id.toString()] = s);
+        archivedSessions.forEach(s => sessionMap[s._id.toString()] = s);
+
+        // 6. Attach Session Data
+        const historyWithDetails = attendance.map(record => {
+            const sessionData = sessionMap[record.session.toString()];
+            return {
+                ...record,
+                session: sessionData || { subject: 'Unknown Session', startTime: record.createdAt, endTime: record.createdAt }
+            };
+        });
+
+        res.json(historyWithDetails);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -180,7 +211,17 @@ const getStudentDashboard = async (req, res) => {
     try {
         // Mocking today as "Monday" for demo purposes
         const day = new Date().toLocaleDateString('en-US', { weekday: 'long' });
-        const routines = await require('../models/ClassRoutine').find({ section: req.user.section, day });
+
+        // Fetch all routines for this section & day, populate teacher to check department
+        const allRoutines = await require('../models/ClassRoutine')
+            .find({ section: req.user.section, day })
+            .populate('teacher', 'department')
+            .sort({ startTime: 1 });
+
+        // FILTER: Check if Teacher's Dept matches Student's Dept
+        const routines = allRoutines.filter(r =>
+            r.teacher && r.teacher.department === req.user.department
+        );
 
         const dashboard = await Promise.all(routines.map(async (routine) => {
             // Check for active session for this subject/section
@@ -206,6 +247,7 @@ const getStudentDashboard = async (req, res) => {
 
             return {
                 subject: routine.subject,
+                day: routine.day, // Add this for filtering
                 startTime: routine.startTime,
                 endTime: routine.endTime,
                 status,

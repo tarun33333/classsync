@@ -14,7 +14,14 @@ const StudentHomeScreen = ({ navigation }) => {
             const res = await client.get('/attendance/dashboard');
             setPeriods(res.data);
         } catch (error) {
-            console.log('Error fetching dashboard');
+            console.log('Error fetching dashboard', error);
+            if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+                // Token invalid, logout
+                navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'Login' }],
+                });
+            }
         }
     };
 
@@ -34,35 +41,44 @@ const StudentHomeScreen = ({ navigation }) => {
         navigation.navigate('StudentAttendance', { sessionId });
     };
 
-    const renderItem = ({ item }) => (
-        <View style={styles.card}>
-            <View>
-                <Text style={styles.subject}>{item.subject}</Text>
-                <Text>{item.startTime} - {item.endTime}</Text>
-                <Text style={[styles.status,
-                item.status === 'present' ? styles.present :
-                    item.status === 'ongoing' ? styles.ongoing : styles.upcoming
-                ]}>
-                    {item.status.toUpperCase()}
-                </Text>
+    const renderItem = ({ item }) => {
+        if (!item) return null; // Safe check
+
+        return (
+            <View style={styles.card}>
+                <View>
+                    <Text style={styles.subject}>{item?.subject || 'Unknown Subject'}</Text>
+                    <Text>{item?.startTime} - {item?.endTime}</Text>
+                    <Text style={[styles.status,
+                    item.status === 'present' ? styles.present :
+                        item.status === 'ongoing' ? styles.ongoing : styles.upcoming
+                    ]}>
+                        {item.status ? item.status.toUpperCase() : 'UNKNOWN'}
+                    </Text>
+                </View>
+                {item.status === 'ongoing' && (
+                    <Button title="Mark" onPress={() => handleMarkAttendance(item.sessionId)} />
+                )}
             </View>
-            {item.status === 'ongoing' && (
-                <Button title="Mark" onPress={() => handleMarkAttendance(item.sessionId)} />
-            )}
-        </View>
-    );
+        );
+    };
+
+    const currentDay = new Date().toLocaleDateString('en-US', { weekday: 'long' });
 
     return (
         <View style={styles.container}>
             <Text style={styles.title}>Hi, {userInfo.name}</Text>
             <Text style={styles.subtitle}>Roll: {userInfo.rollNumber}</Text>
 
-            <Text style={styles.header}>Today's Classes</Text>
+            <Text style={styles.header}>Today's Classes ({currentDay})</Text>
             <FlatList
-                data={periods}
+                data={periods
+                    .filter(p => p.day === currentDay)
+                    .sort((a, b) => a.startTime.localeCompare(b.startTime))}
                 keyExtractor={(item, index) => index.toString()}
                 renderItem={renderItem}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                ListEmptyComponent={<Text style={{ textAlign: 'center', marginTop: 20 }}>No classes scheduled for today.</Text>}
             />
 
 
