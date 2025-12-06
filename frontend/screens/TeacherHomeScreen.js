@@ -100,10 +100,10 @@ const TeacherHomeScreen = ({ navigation }) => {
             <Text style={styles.subtitle}>Your Schedule</Text>
 
             <FlatList
-                data={routines}
+                data={routines.filter(r => r.day === new Date().toLocaleDateString('en-US', { weekday: 'long' }))}
                 keyExtractor={(item) => item._id}
                 renderItem={renderRoutine}
-                ListEmptyComponent={<Text style={styles.noData}>No classes assigned.</Text>}
+                ListEmptyComponent={<Text style={styles.noData}>No classes assigned for today.</Text>}
             />
 
 
