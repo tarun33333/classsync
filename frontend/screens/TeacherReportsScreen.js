@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Dimensions, Button, TouchableOpacity, Alert, Modal, ActivityIndicator, Platform } from 'react-native';
 import { PieChart } from 'react-native-chart-kit';
 import client from '../api/client';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
