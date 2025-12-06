@@ -22,10 +22,22 @@ const verifyWifi = async (req, res) => {
         // Verify BSSID
         // In production, BSSID matching should be strict. 
         // For testing/simulators, we might relax this or check if BSSID is provided.
-        if (session.bssid !== bssid) {
-            // Allow a debug bypass if BSSID is "DEBUG_BSSID"
-            if (bssid !== 'DEBUG_BSSID') {
-                return res.status(400).json({ message: 'WiFi location mismatch. Please connect to the correct classroom WiFi.' });
+        // Strict BSSID Check (Bypass Removed)
+        // Network Check Logic
+        // 1. Wildcard: If Teacher is on Emulator (0.0.0.0), accept all.
+        if (session.bssid && session.bssid !== '0.0.0.0') {
+
+            // 2. Subnet Check (for Real Devices)
+            // Extract "192.168.1" from "192.168.1.5"
+            const getSubnet = (ip) => ip.includes('.') ? ip.split('.').slice(0, 3).join('.') : ip;
+
+            const sessionSubnet = getSubnet(session.bssid);
+            const studentSubnet = getSubnet(bssid);
+
+            if (sessionSubnet !== studentSubnet) {
+                return res.status(400).json({
+                    message: `Please connect to the same WiFi as the Teacher.\n(Room: ${sessionSubnet}.x, You: ${studentSubnet}.x)`
+                });
             }
         }
 

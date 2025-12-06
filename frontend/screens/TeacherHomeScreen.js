@@ -46,8 +46,8 @@ const TeacherHomeScreen = ({ navigation }) => {
             const sessionData = {
                 subject: routine.subject,
                 section: routine.section,
-                bssid: 'DEBUG_BSSID',
-                ssid: 'ClassWiFi'
+                bssid: (await Network.getIpAddressAsync()) || 'UNKNOWN',
+                ssid: 'ClassWiFi' // Optional, just a label
             };
 
             const res = await client.post('/sessions/start', sessionData);

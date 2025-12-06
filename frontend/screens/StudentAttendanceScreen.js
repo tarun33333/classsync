@@ -26,20 +26,24 @@ const StudentAttendanceScreen = ({ route, navigation }) => {
     }, [mode]);
 
     const handleAutoFlow = async () => {
-        const success = await verifyWifi(true); // silent mode
-        if (success) {
-            if (mode === 'qr') {
-                setScanning(true);
+        if (mode === 'qr') {
+            // QR Mode: Skip WiFi check (assumes physical presence to scan)
+            setStep(2);
+            setScanning(true);
+        } else {
+            // OTP Mode: Require WiFi verification
+            const success = await verifyWifi(true);
+            if (success) {
+                // Stay on OTP input screen
             }
-            // If otp, just staying on Step 2 is enough
         }
     };
 
     const verifyWifi = async (silent = false) => {
         try {
-            // Simulate getting BSSID. In Expo Go, this returns null or IP.
-            // We'll send "DEBUG_BSSID" to match the backend bypass for now.
-            const bssid = 'DEBUG_BSSID';
+            // In production, use a native module or config plugin to get BSSID.
+            // For now, we'll send the IP or a placeholder, but NOT the debug bypass.
+            const bssid = (await Network.getIpAddressAsync()) || 'UNKNOWN';
 
             await client.post('/attendance/verify-wifi', { sessionId, bssid });
             setStep(2);
