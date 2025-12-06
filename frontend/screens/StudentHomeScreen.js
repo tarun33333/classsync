@@ -32,7 +32,19 @@ const StudentHomeScreen = ({ navigation }) => {
 
     useFocusEffect(
         useCallback(() => {
-            fetchDashboard();
+            fetchDashboard(); // Immediate fetch on focus
+
+            // Poll every 5 seconds for live status updates
+            const intervalId = setInterval(() => {
+                // Silent fetch (no loading spinner for background updates)
+                client.get('/attendance/dashboard').then(res => {
+                    setPeriods(res.data);
+                    const ongoing = res.data.find(p => p.status === 'ongoing');
+                    setActivePeriod(ongoing || null);
+                }).catch(err => console.log('Background fetch error', err));
+            }, 5000);
+
+            return () => clearInterval(intervalId); // Cleanup on blur
         }, [])
     );
 
