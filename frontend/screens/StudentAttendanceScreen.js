@@ -30,13 +30,8 @@ const StudentAttendanceScreen = ({ route, navigation }) => {
             // QR Mode: Skip WiFi check (assumes physical presence to scan)
             setStep(2);
             setScanning(true);
-        } else {
-            // OTP Mode: Require WiFi verification
-            const success = await verifyWifi(true);
-            if (success) {
-                // Stay on OTP input screen
-            }
         }
+        // OTP Mode: Do NOT auto-verify. Show Step 1 so user sees IP and clicks Verify manually.
     };
 
     const verifyWifi = async (silent = false) => {
