@@ -49,11 +49,13 @@ const TeacherSessionScreen = ({ route, navigation }) => {
             <Text style={styles.subHeader}>Live Attendance ({attendanceList.length})</Text>
             <FlatList
                 data={attendanceList}
-                keyExtractor={(item) => item._id}
+                keyExtractor={(item) => item.student._id}
                 renderItem={({ item }) => (
                     <View style={styles.listItem}>
                         <Text>{item.student.name} ({item.student.rollNumber})</Text>
-                        <Text style={styles.method}>{item.method.toUpperCase()}</Text>
+                        <Text style={[styles.method, { color: item.status === 'present' ? 'green' : 'red' }]}>
+                            {item.status === 'present' ? item.method.toUpperCase() : 'ABSENT'}
+                        </Text>
                     </View>
                 )}
             />

@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Dimensions, Button, TouchableOpacit
 import { PieChart } from 'react-native-chart-kit';
 import client from '../api/client';
 import * as FileSystem from 'expo-file-system/legacy';
+const { StorageAccessFramework } = FileSystem;
 import * as Sharing from 'expo-sharing';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
@@ -90,17 +91,40 @@ const TeacherReportsScreen = () => {
                 csv += `${name},${roll},${status},${method},${time}\n`;
             });
 
-            // Save and Share
             const fileName = `Attendance_${stats?.label}_${selectedDate.toISOString().split('T')[0]}.csv`;
-            const fileUri = FileSystem.documentDirectory + fileName;
 
-            // FIX: Use string 'utf8' instead of FileSystem.EncodingType.UTF8
-            await FileSystem.writeAsStringAsync(fileUri, csv, { encoding: 'utf8' });
+            if (Platform.OS === 'android') {
+                // Android: Save to Custom Folder via SAF
+                try {
+                    const permissions = await StorageAccessFramework.requestDirectoryPermissionsAsync();
 
-            if (await Sharing.isAvailableAsync()) {
-                await Sharing.shareAsync(fileUri);
+                    if (permissions.granted) {
+                        const targetUri = permissions.directoryUri;
+                        try {
+                            const createdUri = await StorageAccessFramework.createFileAsync(targetUri, fileName, 'text/csv');
+                            await FileSystem.writeAsStringAsync(createdUri, csv, { encoding: FileSystem.EncodingType.UTF8 });
+                            Alert.alert('Success', 'Report saved to selected folder!');
+                        } catch (e) {
+                            console.log(e);
+                            Alert.alert('Error', 'Could not save file. Folder might be restricted.');
+                        }
+                    } else {
+                        Alert.alert('Permission Denied', 'Cannot save without directory permission.');
+                    }
+                } catch (err) {
+                    console.log(err);
+                    Alert.alert('Error', 'Failed to access storage mechanism.');
+                }
             } else {
-                Alert.alert('Success', 'File saved to documents (Sharing not available)');
+                // iOS / Fallback
+                const fileUri = FileSystem.documentDirectory + fileName;
+                await FileSystem.writeAsStringAsync(fileUri, csv, { encoding: 'utf8' });
+
+                if (await Sharing.isAvailableAsync()) {
+                    await Sharing.shareAsync(fileUri);
+                } else {
+                    Alert.alert('Success', 'File saved to Documents');
+                }
             }
 
         } catch (error) {

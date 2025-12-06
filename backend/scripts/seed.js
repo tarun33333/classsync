@@ -4,6 +4,7 @@ const User = require('../models/User');
 const ClassRoutine = require('../models/ClassRoutine');
 const Session = require('../models/Session');
 const Attendance = require('../models/Attendance');
+const ClassHistory = require('../models/ClassHistory');
 
 mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/classsync')
     .then(() => console.log('MongoDB Connected for Seeding'))
@@ -16,6 +17,7 @@ const seedData = async () => {
         await ClassRoutine.deleteMany({});
         await Session.deleteMany({});
         await Attendance.deleteMany({});
+        await ClassHistory.deleteMany({});
 
         console.log('Cleared existing data...');
 
@@ -133,8 +135,41 @@ const seedData = async () => {
             const relevantRoutines = routines.filter(r => r.day === dayName && teachersByDept['CSE'].some(t => t._id.equals(r.teacher)));
 
             for (const routine of relevantRoutines) {
-                // Create a completed session
-                const session = await Session.create({
+                const sessionId = new mongoose.Types.ObjectId();
+                const cseStudents = studentsByDept['CSE'];
+
+                // Determine attendance beforehand to set counts
+                const attendanceData = [];
+                let presentCount = 0;
+                let absentCount = 0;
+
+                for (const student of cseStudents) {
+                    const isPresent = Math.random() > 0.2; // 80% attendance
+                    if (isPresent) {
+                        presentCount++;
+                        attendanceData.push({
+                            session: sessionId,
+                            student: student._id,
+                            status: 'present',
+                            method: isPresent ? 'qr' : 'manual',
+                            createdAt: pastDate
+                        });
+                    } else {
+                        absentCount++;
+                        attendanceData.push({
+                            session: sessionId,
+                            student: student._id,
+                            status: 'absent',
+                            method: 'manual',
+                            verified: true,
+                            createdAt: pastDate
+                        });
+                    }
+                }
+
+                // Create ClassHistory Record
+                await ClassHistory.create({
+                    _id: sessionId,
                     teacher: routine.teacher,
                     subject: routine.subject,
                     section: routine.section,
@@ -142,26 +177,15 @@ const seedData = async () => {
                     ssid: 'HISTORY_WIFI',
                     otp: '0000',
                     qrCode: 'history_qr',
-                    isActive: false, // Ended
-                    routineId: null, // Optional for history
-                    createdAt: pastDate, // Backdate
-                    endTime: pastDate // Backdate
+                    startTime: pastDate,
+                    endTime: pastDate,
+                    presentCount,
+                    absentCount
                 });
 
-                // Mark attendance for CSE students
-                const cseStudents = studentsByDept['CSE'];
-
-                // Randomly mark present or absent
-                for (const student of cseStudents) {
-                    const isPresent = Math.random() > 0.2; // 80% attendance
-
-                    await Attendance.create({
-                        session: session._id,
-                        student: student._id,
-                        status: isPresent ? 'present' : 'absent',
-                        method: isPresent ? 'qr' : 'manual',
-                        createdAt: pastDate // Backdate
-                    });
+                // Create Attendance Records
+                if (attendanceData.length > 0) {
+                    await Attendance.insertMany(attendanceData);
                 }
             }
         }

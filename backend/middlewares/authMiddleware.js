@@ -9,8 +9,14 @@ const protect = async (req, res, next) => {
             token = req.headers.authorization.split(' ')[1];
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
             req.user = await User.findById(decoded.id).select('-password');
+
+            if (!req.user) {
+                return res.status(401).json({ message: 'Not authorized, user not found' });
+            }
+
             next();
         } catch (error) {
+            console.error(error);
             res.status(401).json({ message: 'Not authorized, token failed' });
         }
     }
@@ -24,6 +30,7 @@ const teacherOnly = (req, res, next) => {
     if (req.user && req.user.role === 'teacher') {
         next();
     } else {
+        console.log('Teacher Auth Failed for User:', req.user ? req.user._id : 'null', 'Role:', req.user ? req.user.role : 'N/A');
         res.status(403).json({ message: 'Not authorized, teachers only' });
     }
 };

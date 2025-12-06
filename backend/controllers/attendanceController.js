@@ -47,6 +47,34 @@ const markAttendance = async (req, res) => {
             return res.status(400).json({ message: 'Session is not active' });
         }
 
+        // STICT VALIDATION: Check Department and Section
+        // Assumes req.user is populated with department and section
+        // Depending on your User model, ensure these fields exist.
+        // req.user is usually fetched by the 'protect' middleware.
+        // We need to fetch the FULL user if protect middleware only has basic info, 
+        // but typically protect middleware attaches the full user doc.
+
+        // Let's verify req.user has these fields.
+        // If the session has specific department/section, the student MUST match.
+        // Note: 'department' on session is usually implied by the routine or teacher, 
+        // but Session model schema needs to be checked. 
+        // Based on seed.js, Session has subject/section/teacher but NOT explicitly department?
+        // Wait, seed.js does NOT add department to Session.
+        // It adds 'subject', 'section', 'teacher'.
+        // Teacher has 'department'.
+        // We can infer Session department from Teacher's department.
+
+        // We need to populate teacher to check department.
+        await session.populate('teacher');
+
+        if (req.user.department !== session.teacher.department) {
+            return res.status(403).json({ message: `You belong to ${req.user.department}, this class is for ${session.teacher.department}.` });
+        }
+
+        if (session.section && req.user.section !== session.section) {
+            return res.status(403).json({ message: `You are in Section ${req.user.section}, this class is for Section ${session.section}.` });
+        }
+
         // Verify Code
         if (method === 'otp') {
             if (session.otp !== code) {
@@ -80,14 +108,53 @@ const markAttendance = async (req, res) => {
     }
 };
 
-// @desc    Get Live Attendance for Session
+// @desc    Get Live Attendance for Session (Full Class List)
 // @route   GET /api/attendance/session/:sessionId
 // @access  Teacher
 const getSessionAttendance = async (req, res) => {
     try {
-        const attendance = await Attendance.find({ session: req.params.sessionId })
-            .populate('student', 'name rollNumber macAddress');
-        res.json(attendance);
+        const ClassHistory = require('../models/ClassHistory'); // Import History model
+
+        // 1. Try finding in Active Sessions
+        let session = await Session.findById(req.params.sessionId).populate('teacher');
+
+        // 2. If not active, try ClassHistory (Archived)
+        if (!session) {
+            session = await ClassHistory.findById(req.params.sessionId).populate('teacher');
+        }
+
+        if (!session) {
+            return res.status(404).json({ message: 'Session not found' });
+        }
+
+        // 1. Fetch all students who SHOULD be in this class
+        const User = require('../models/User'); // Import User model inside to ensure availability
+        const enrolledStudents = await User.find({
+            role: 'student',
+            department: session.teacher.department,
+            section: session.section
+        }).select('name rollNumber');
+
+        // 2. Fetch existing attendance records
+        const attendanceRecords = await Attendance.find({ session: session._id });
+
+        // 3. Merge Lists
+        const fullReport = enrolledStudents.map(student => {
+            const record = attendanceRecords.find(ar => ar.student.toString() === student._id.toString());
+
+            return {
+                student: {
+                    name: student.name,
+                    rollNumber: student.rollNumber,
+                    _id: student._id
+                },
+                status: record ? record.status : 'absent', // Default to absent if no record
+                method: record ? record.method : null,
+                createdAt: record ? record.createdAt : null
+            };
+        });
+
+        res.json(fullReport);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -187,24 +254,23 @@ const getStudentStats = async (req, res) => {
 // @desc    Get Teacher Reports (Past Sessions)
 // @route   GET /api/attendance/reports
 // @access  Teacher
+// @desc    Get Teacher Reports (Past Sessions from History)
+// @route   GET /api/attendance/reports
+// @access  Teacher
 const getTeacherReports = async (req, res) => {
     try {
-        const sessions = await Session.find({ teacher: req.user._id, isActive: false })
-            .sort({ createdAt: -1 })
-            .limit(10); // Last 10 sessions
+        const ClassHistory = require('../models/ClassHistory');
+        const history = await ClassHistory.find({ teacher: req.user._id })
+            .sort({ endTime: -1 })
+            .limit(10);
 
-        const reports = await Promise.all(sessions.map(async (session) => {
-            const presentCount = await Attendance.countDocuments({ session: session._id, status: 'present' });
-            const absentCount = await Attendance.countDocuments({ session: session._id, status: 'absent' });
-
-            return {
-                sessionId: session._id,
-                subject: session.subject,
-                section: session.section,
-                date: session.createdAt,
-                presentCount,
-                absentCount
-            };
+        const reports = history.map(h => ({
+            sessionId: h._id,
+            subject: h.subject,
+            section: h.section,
+            date: h.startTime,
+            presentCount: h.presentCount,
+            absentCount: h.absentCount
         }));
 
         res.json(reports);
@@ -213,37 +279,35 @@ const getTeacherReports = async (req, res) => {
     }
 };
 
-// @desc    Get Reports filtered by Date
+// @desc    Get Reports filtered by Date (from History)
 // @route   GET /api/attendance/reports/filter
 // @access  Teacher
 const getFilteredReports = async (req, res) => {
     const { date } = req.query;
     try {
+        const ClassHistory = require('../models/ClassHistory');
+
         // Create date range for the selected day
         const start = new Date(date);
         start.setHours(0, 0, 0, 0);
         const end = new Date(date);
         end.setHours(23, 59, 59, 999);
 
-        // Find sessions for this teacher on this day (active or inactive)
-        const sessions = await Session.find({
+        // Find HISTORY for this teacher on this day
+        // Note: We use startTime to filter, as that's when class happened.
+        const history = await ClassHistory.find({
             teacher: req.user._id,
-            createdAt: { $gte: start, $lte: end }
-        }).sort({ createdAt: 1 });
+            startTime: { $gte: start, $lte: end }
+        }).sort({ startTime: 1 });
 
-        const reports = await Promise.all(sessions.map(async (session) => {
-            const presentCount = await Attendance.countDocuments({ session: session._id, status: 'present' });
-            const absentCount = await Attendance.countDocuments({ session: session._id, status: 'absent' });
-
-            return {
-                sessionId: session._id,
-                subject: session.subject,
-                section: session.section,
-                date: session.createdAt,
-                isActive: session.isActive,
-                presentCount,
-                absentCount
-            };
+        const reports = history.map(h => ({
+            sessionId: h._id,
+            subject: h.subject,
+            section: h.section,
+            date: h.startTime, // Use startTime as the date
+            isActive: false, // History is always inactive
+            presentCount: h.presentCount,
+            absentCount: h.absentCount
         }));
 
         res.json(reports);

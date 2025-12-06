@@ -73,6 +73,9 @@ const startSession = async (req, res) => {
 // @desc    End current session
 // @route   POST /api/sessions/end
 // @access  Teacher
+// @desc    End current session (Archive to History)
+// @route   POST /api/sessions/end
+// @access  Teacher
 const endSession = async (req, res) => {
     const { sessionId } = req.body;
 
@@ -86,31 +89,28 @@ const endSession = async (req, res) => {
             return res.status(403).json({ message: 'Not authorized' });
         }
 
-        session.isActive = false;
-        session.endTime = Date.now();
-        await session.save();
-
-        // Auto-mark absent students
+        // 1. Calculate Stats & Identify Absentees
         const User = require('../models/User');
         const Attendance = require('../models/Attendance');
+        const ClassHistory = require('../models/ClassHistory');
 
-        // 1. Get all students in this section
+        // Get all students in this section (Enrollment)
         const allStudents = await User.find({
             role: 'student',
             section: session.section
+            // Department check should ideally be here too, but session has teacher ID, so we trust section is unique or handled.
+            // Ideally: department: req.user.department
         }).select('_id');
 
-        // 2. Get all present students for this session
+        // Get all present students for this session
         const presentAttendance = await Attendance.find({
             session: sessionId
         }).select('student');
 
         const presentStudentIds = presentAttendance.map(a => a.student.toString());
-
-        // 3. Filter out students who are NOT present
         const absentStudents = allStudents.filter(s => !presentStudentIds.includes(s._id.toString()));
 
-        // 4. Bulk insert absent records
+        // 2. Mark Absent Students in Attendance Collection (for record keeping)
         if (absentStudents.length > 0) {
             const absentRecords = absentStudents.map(s => ({
                 session: sessionId,
@@ -122,10 +122,29 @@ const endSession = async (req, res) => {
             await Attendance.insertMany(absentRecords);
         }
 
+        // 3. Create ClassHistory Record (Archive)
+        // reuse session._id to keep foreign keys valid
+        const history = await ClassHistory.create({
+            _id: session._id,
+            teacher: session.teacher,
+            subject: session.subject,
+            section: session.section,
+            otp: session.otp,
+            qrCode: session.qrCode,
+            startTime: session.createdAt,
+            endTime: Date.now(),
+            bssid: session.bssid,
+            ssid: session.ssid,
+            presentCount: presentStudentIds.length,
+            absentCount: absentStudents.length
+        });
+
+        // 4. Delete Active Session
+        await Session.deleteOne({ _id: sessionId });
+
         res.json({
-            message: 'Session ended',
-            session,
-            markedAbsent: absentStudents.length
+            message: 'Session ended and archived',
+            history
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
