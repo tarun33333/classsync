@@ -57,15 +57,42 @@ const TeacherHomeScreen = ({ navigation }) => {
         }
     };
 
-    const renderRoutine = ({ item }) => (
-        <View style={styles.card}>
-            <View>
-                <Text style={styles.subject}>{item.subject}</Text>
-                <Text style={styles.details}>{item.section} | {item.day} | {item.startTime} - {item.endTime}</Text>
+    const [now, setNow] = useState(new Date());
+
+    useEffect(() => {
+        const timer = setInterval(() => setNow(new Date()), 10000); // 10s check
+        return () => clearInterval(timer);
+    }, []);
+
+    const isCurrentPeriod = (start, end) => {
+        const currentHour = now.getHours();
+        const currentMin = now.getMinutes();
+        const currentTimeVal = currentHour * 60 + currentMin;
+
+        const [startHour, startMin] = start.split(':').map(Number);
+        const startTimeVal = startHour * 60 + startMin;
+
+        const [endHour, endMin] = end.split(':').map(Number);
+        const endTimeVal = endHour * 60 + endMin;
+
+        return currentTimeVal >= startTimeVal && currentTimeVal < endTimeVal;
+    };
+
+    const renderRoutine = ({ item }) => {
+        const canStart = isCurrentPeriod(item.startTime, item.endTime);
+
+        return (
+            <View style={styles.card}>
+                <View>
+                    <Text style={styles.subject}>{item.subject}</Text>
+                    <Text style={styles.details}>{item.section} | {item.day} | {item.startTime} - {item.endTime}</Text>
+                </View>
+                {canStart && (
+                    <Button title="Start" onPress={() => startSession(item)} />
+                )}
             </View>
-            <Button title="Start" onPress={() => startSession(item)} />
-        </View>
-    );
+        );
+    };
 
     return (
         <View style={styles.container}>

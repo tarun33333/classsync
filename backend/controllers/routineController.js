@@ -5,7 +5,8 @@ const ClassRoutine = require('../models/ClassRoutine');
 // @access  Teacher
 const getTeacherRoutines = async (req, res) => {
     try {
-        const routines = await ClassRoutine.find({ teacher: req.user._id });
+        const day = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+        const routines = await ClassRoutine.find({ teacher: req.user._id, day });
         res.json(routines);
     } catch (error) {
         res.status(500).json({ message: error.message });
