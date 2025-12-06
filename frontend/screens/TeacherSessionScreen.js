@@ -28,7 +28,7 @@ const TeacherSessionScreen = ({ route, navigation }) => {
         try {
             await client.post('/sessions/end', { sessionId: session._id });
             clearInterval(refreshInterval);
-            navigation.navigate('TeacherHome');
+            navigation.navigate('TeacherMain');
         } catch (error) {
             Alert.alert('Error', 'Failed to end session');
         }
